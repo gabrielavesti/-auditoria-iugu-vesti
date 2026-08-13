@@ -115,7 +115,7 @@ def formatar_divergencias(spreadsheet_id, gid_auditoria):
                     "booleanRule": {
                         "condition": {
                             "type": "CUSTOM_FORMULA",
-                            "values": [{"userEnteredValue": '=AND($M2<>"Conciliado",$M2<>"")'}],
+                            "values": [{"userEnteredValue": '=AND($M2<>"Conciliado";$M2<>"")'}],
                         },
                         "format": {"backgroundColor": {"red": 0.96, "green": 0.8, "blue": 0.8}},
                     },
