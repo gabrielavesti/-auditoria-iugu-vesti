@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 COLUNAS_AUDITORIA = [
     "Marca", "Plano", "Cliente", "E-mail", "CPF/CNPJ", "Invoice ID", "Subscription ID",
-    "Status na Iugu", "Status na Planilha", "Valor na Iugu", "Valor na Planilha",
+    "Presente na Iugu", "Status na Iugu", "Status na Planilha", "Valor na Iugu", "Valor na Planilha",
     "Diferencas", "Tipo da Divergencia", "Descricao do Problema", "Acao Recomendada",
 ]
 

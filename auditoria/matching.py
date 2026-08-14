@@ -192,6 +192,7 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
         "Subscription ID": "; ".join(
             dict.fromkeys(str(i.get("subscription_id")) for i in iugu_recs if i.get("subscription_id"))
         ),
+        "Presente na Iugu": "Presente na Iugu" if iugu_recs else "-",
         "Status na Iugu": "; ".join(statuses_iugu) or "-",
         "Status na Planilha": "Presente na Planilha" if sheet_recs else "-",
         "Valor na Iugu": valor_iugu,
