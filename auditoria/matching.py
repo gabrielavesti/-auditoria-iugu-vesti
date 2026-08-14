@@ -37,6 +37,10 @@ def _mapa_colunas(header_row):
             idx["email"] = i
         elif "desconto" in n:
             idx["descontos"] = i
+        elif n == "diavencimento":
+            idx["dia_vencimento"] = i
+        elif n == "vencimento" and "dia_vencimento" not in idx:
+            idx["dia_vencimento"] = i
     return idx
 
 
@@ -73,6 +77,11 @@ def linhas_da_aba(values):
         subconta_raw = get("subconta")
         conta_resolvida = resolver_conta(subconta_raw)
 
+        dia_venc_digits = apenas_digitos(get("dia_vencimento"))
+        dia_vencimento = int(dia_venc_digits) if dia_venc_digits else None
+        if dia_vencimento is not None and not (1 <= dia_vencimento <= 31):
+            dia_vencimento = None
+
         linhas.append(
             {
                 "linha": r + 1,
@@ -85,6 +94,7 @@ def linhas_da_aba(values):
                 "email": get("email"),
                 "descontos": para_numero(get("descontos", 0)),
                 "valor": valor,
+                "dia_vencimento": dia_vencimento,
             }
         )
     return linhas
@@ -116,6 +126,8 @@ def _acao_recomendada(tipos):
         return "Nenhuma acao necessaria"
     if "Subconta nao identificada" in tipos:
         return "Corrigir o nome da Subconta na planilha para bater com a Iugu"
+    if "Aguardando Vencimento" in tipos:
+        return "Nenhuma acao necessaria - vencimento ainda nao chegou este mes"
     if "Ausente na Planilha" in tipos:
         return "Lancar fatura na planilha Marcas e Planos"
     if "Ausente na Iugu" in tipos:
@@ -137,14 +149,29 @@ def _acao_recomendada(tipos):
     return "Revisar manualmente"
 
 
-def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_nao_identificada=False):
+def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_nao_identificada=False, dia_atual=None):
     tipos = []
+
+    # se a planilha nao tem fatura na Iugu mas o dia de vencimento deste mes
+    # ainda nao chegou, ainda nao e um problema - a Iugu pode gerar a fatura
+    # em qualquer momento ate o vencimento.
+    dias_venc = [r.get("dia_vencimento") for r in sheet_recs if r.get("dia_vencimento")]
+    vencimento_ja_passou = any(d < dia_atual for d in dias_venc) if (dias_venc and dia_atual is not None) else True
+    aguardando_vencimento = (
+        not subconta_nao_identificada
+        and not iugu_recs
+        and bool(sheet_recs)
+        and bool(dias_venc)
+        and not vencimento_ja_passou
+    )
 
     if subconta_nao_identificada:
         tipos.append("Subconta nao identificada")
+    if aguardando_vencimento:
+        tipos.append("Aguardando Vencimento")
     if not sheet_recs:
         tipos.append("Ausente na Planilha")
-    if not subconta_nao_identificada and not iugu_recs:
+    if not subconta_nao_identificada and not iugu_recs and not aguardando_vencimento:
         tipos.append("Ausente na Iugu")
     if len(iugu_recs) > 1 or len(sheet_recs) > 1:
         tipos.append("Multiplos Registros")
@@ -152,7 +179,7 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
     valor_iugu = sum(i.get("total_cents") or 0 for i in iugu_recs) / 100
     valor_planilha = sum(r.get("valor") or 0 for r in sheet_recs)
     diferenca = round((valor_iugu - valor_planilha), 2)
-    if not subconta_nao_identificada and abs(diferenca) >= 0.01:
+    if not subconta_nao_identificada and not aguardando_vencimento and abs(diferenca) >= 0.01:
         tipos.append("Diferenca de Valor")
 
     statuses_iugu = list(dict.fromkeys(_status_iugu_pt(i) for i in iugu_recs))
@@ -176,11 +203,17 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
 
     desconto_iugu = sum(i.get("discount_cents") or 0 for i in iugu_recs) / 100
     desconto_planilha = sum(r.get("descontos") or 0 for r in sheet_recs)
-    if not subconta_nao_identificada and abs(desconto_iugu - desconto_planilha) >= 0.01:
+    if not subconta_nao_identificada and not aguardando_vencimento and abs(desconto_iugu - desconto_planilha) >= 0.01:
         tipos.append("Desconto Divergente")
 
     tipos_unicos = list(dict.fromkeys(tipos))
-    descricao = "Registro conciliado sem divergencias" if not tipos_unicos else f"Encontrado(s): {', '.join(tipos_unicos)}"
+    tipos_reais = [t for t in tipos_unicos if t != "Aguardando Vencimento"]
+    if tipos_unicos == ["Aguardando Vencimento"]:
+        descricao = "Vencimento ainda nao chegou neste mes - nenhuma acao necessaria"
+    elif not tipos_unicos:
+        descricao = "Registro conciliado sem divergencias"
+    else:
+        descricao = f"Encontrado(s): {', '.join(tipos_unicos)}"
 
     return {
         "Marca": marca,
@@ -188,6 +221,7 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
         "Cliente": iugu0.get("customer_name") or iugu0.get("payer_name") or sheet0.get("marca") or "",
         "E-mail": iugu0.get("email") or sheet0.get("email") or "",
         "CPF/CNPJ": cpfcnpj or "",
+        "Dia Vencimento": sheet0.get("dia_vencimento") if sheet0.get("dia_vencimento") is not None else "-",
         "Invoice ID": "; ".join(str(i.get("invoice_id")) for i in iugu_recs if i.get("invoice_id")),
         "Subscription ID": "; ".join(
             dict.fromkeys(str(i.get("subscription_id")) for i in iugu_recs if i.get("subscription_id"))
@@ -202,18 +236,20 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
         "Descricao do Problema": descricao,
         "Acao Recomendada": _acao_recomendada(tipos_unicos),
         "_grupo": parceiro or sheet0.get("subconta") or "-",
-        "_conciliado": len(tipos_unicos) == 0,
+        "_conciliado": len(tipos_reais) == 0,
     }
 
 
-def conciliar_por_subconta(faturas_iugu, linhas_planilha):
+def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
     linhas_auditoria = []
 
     linhas_resolvidas = []
     for row in linhas_planilha:
         if not row.get("id_iugu"):
             linhas_auditoria.append(
-                _montar_linha_auditoria(None, row.get("cpfcnpj"), [], [row], subconta_nao_identificada=True)
+                _montar_linha_auditoria(
+                    None, row.get("cpfcnpj"), [], [row], subconta_nao_identificada=True, dia_atual=dia_atual
+                )
             )
         else:
             linhas_resolvidas.append(row)
@@ -247,7 +283,7 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha):
         for cpf in todos_cnpjs:
             iugu_recs = iugu_by_cnpj.get(cpf, [])
             sheet_recs = sheet_by_cnpj.get(cpf, [])
-            linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf, iugu_recs, sheet_recs))
+            linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf, iugu_recs, sheet_recs, dia_atual=dia_atual))
 
         # fallback: casa por nome de marca quem nao tem CPF/CNPJ em nenhum dos lados
         usados_planilha = set()
@@ -263,13 +299,15 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha):
             if match_idx is not None:
                 usados_planilha.add(match_idx)
                 linhas_auditoria.append(
-                    _montar_linha_auditoria(parceiro, "", [inv], [sem_cnpj_planilha[match_idx]])
+                    _montar_linha_auditoria(
+                        parceiro, "", [inv], [sem_cnpj_planilha[match_idx]], dia_atual=dia_atual
+                    )
                 )
             else:
-                linhas_auditoria.append(_montar_linha_auditoria(parceiro, "", [inv], []))
+                linhas_auditoria.append(_montar_linha_auditoria(parceiro, "", [inv], [], dia_atual=dia_atual))
 
         for i, row in enumerate(sem_cnpj_planilha):
             if i not in usados_planilha:
-                linhas_auditoria.append(_montar_linha_auditoria(parceiro, "", [], [row]))
+                linhas_auditoria.append(_montar_linha_auditoria(parceiro, "", [], [row], dia_atual=dia_atual))
 
     return linhas_auditoria

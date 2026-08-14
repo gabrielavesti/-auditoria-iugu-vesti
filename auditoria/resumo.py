@@ -4,7 +4,7 @@ auditoria ja conciliadas, e os valores prontos para escrever nas 3 abas."""
 from datetime import datetime, timezone
 
 COLUNAS_AUDITORIA = [
-    "Marca", "Plano", "Cliente", "E-mail", "CPF/CNPJ", "Invoice ID", "Subscription ID",
+    "Marca", "Plano", "Cliente", "E-mail", "CPF/CNPJ", "Dia Vencimento", "Invoice ID", "Subscription ID",
     "Presente na Iugu", "Status na Iugu", "Status na Planilha", "Valor na Iugu", "Valor na Planilha",
     "Diferencas", "Tipo da Divergencia", "Descricao do Problema", "Acao Recomendada",
 ]
@@ -25,6 +25,7 @@ def montar_resumo_executivo(linhas, agora=None):
     reembolsadas_parcial = sum(1 for l in linhas if "Parcialmente Reembolsada" in str(l.get("Status na Iugu", "")))
     inexistentes_iugu = sum(1 for l in linhas if "Ausente na Iugu" in str(l.get("Tipo da Divergencia", "")))
     inexistentes_planilha = sum(1 for l in linhas if "Ausente na Planilha" in str(l.get("Tipo da Divergencia", "")))
+    aguardando_vencimento = sum(1 for l in linhas if "Aguardando Vencimento" in str(l.get("Tipo da Divergencia", "")))
 
     valor_total_iugu = round(sum(l.get("Valor na Iugu") or 0 for l in linhas), 2)
     valor_total_planilha = round(sum(l.get("Valor na Planilha") or 0 for l in linhas), 2)
@@ -43,6 +44,7 @@ def montar_resumo_executivo(linhas, agora=None):
         ["Total Parcialmente Reembolsadas", reembolsadas_parcial],
         ["Total Inexistentes na Iugu", inexistentes_iugu],
         ["Total Inexistentes na Planilha", inexistentes_planilha],
+        ["Total Aguardando Vencimento (ainda nao venceu este mes)", aguardando_vencimento],
         ["Valor Total na Iugu (R$)", valor_total_iugu],
         ["Valor Total na Planilha (R$)", valor_total_planilha],
         ["Diferenca Financeira (R$)", diferenca_financeira],

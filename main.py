@@ -9,6 +9,7 @@ auditoria/matching.py).
 
 import sys
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from auditoria import config, iugu, sheets
 from auditoria.matching import conciliar_por_subconta, linhas_da_aba
@@ -17,6 +18,7 @@ from auditoria.resumo import montar_resumo_executivo, montar_resumo_por_marca, m
 
 def main():
     agora = datetime.now(timezone.utc)
+    dia_atual_brt = agora.astimezone(ZoneInfo("America/Sao_Paulo")).day
     sufixo_mes = agora.strftime("%m-%Y")
 
     print(f"[{agora.isoformat()}] Iniciando auditoria - periodo ate {sufixo_mes}")
@@ -41,7 +43,7 @@ def main():
     print(f"Total de linhas da planilha (Vesti + Starter): {len(linhas_planilha)}")
 
     print("Conciliando por subconta...")
-    linhas_auditoria = conciliar_por_subconta(faturas, linhas_planilha)
+    linhas_auditoria = conciliar_por_subconta(faturas, linhas_planilha, dia_atual=dia_atual_brt)
     print(f"  {len(linhas_auditoria)} linhas de auditoria geradas.")
 
     valores_auditoria = montar_valores_auditoria(linhas_auditoria)
