@@ -9,7 +9,12 @@ import os
 IUGU_MASTER_TOKEN = os.environ["IUGU_MASTER_TOKEN"]
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
 
-SHEET_ID_ORIGEM = os.environ.get("SHEET_ID_ORIGEM", "1gfo0ORs4ccD0yn13eCuNxHM9USoGH_vjuzytcS1-QyQ")
+# Origem = a propria planilha de auditoria: o usuario mantem copias limpas
+# (revisadas manualmente, sem linhas que na verdade nao existem/sao isentas na
+# Iugu) das abas "Vesti MM-YYYY" / "Starter MM-YYYY" dentro dela mesma,
+# atualizadas por ele ao fim de cada mes. Antes (ate 2026-08-18) a origem era
+# a planilha "Marcas e Planos" (1gfo0ORs4ccD0yn13eCuNxHM9USoGH_vjuzytcS1-QyQ).
+SHEET_ID_ORIGEM = os.environ.get("SHEET_ID_ORIGEM", "1iuFLk7gatsxheUa3ePXXgotstc4YPBy6TXwwQ2pc9vY")
 SHEET_ID_DESTINO = os.environ.get("SHEET_ID_DESTINO", "1iuFLk7gatsxheUa3ePXXgotstc4YPBy6TXwwQ2pc9vY")
 
 # Subcontas ativas da Iugu (17 linhas no CSV original menos "Vesti Light" - duplicata

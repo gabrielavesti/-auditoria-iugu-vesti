@@ -1,8 +1,11 @@
 # Auditoria Iugu x Marcas e Planos
 
-Compara diariamente as faturas da Iugu (mes corrente) com a planilha
-"Marcas e Planos" e escreve divergencias + resumos na planilha de auditoria.
-Roda sozinho todo dia as 5h (Brasilia) via GitHub Actions.
+Compara diariamente as faturas da Iugu (mes corrente) com as abas "Vesti
+MM-YYYY" / "Starter MM-YYYY" mantidas dentro da propria planilha de
+auditoria (copia limpa, atualizada manualmente todo fim de mes a partir da
+planilha "Marcas e Planos") e escreve divergencias + resumos nas outras
+abas da mesma planilha. Roda sozinho todo dia as 5h (Brasilia) via GitHub
+Actions.
 
 ## O que precisa estar configurado
 
@@ -22,9 +25,8 @@ Roda sozinho todo dia as 5h (Brasilia) via GitHub Actions.
    - Nao precisa dar nenhum papel/role especial.
 4. Depois de criada, clique nela -> aba "Chaves" -> "Adicionar chave" -> "Criar nova chave" -> formato **JSON** -> baixa um arquivo `.json`.
 5. Abra esse arquivo, copie o email `client_email` de dentro dele (algo como `auditoria-iugu@SEU-PROJETO.iam.gserviceaccount.com`).
-6. **Compartilhe as duas planilhas com esse e-mail** (como editor):
-   - Planilha de origem "Marcas e Planos"
-   - Planilha de destino "Auditoria Iugu x Marcas e Planos"
+6. **Compartilhe a planilha com esse e-mail** (como editor):
+   - "Auditoria Iugu x Marcas e Planos" (serve de origem e destino ao mesmo tempo)
 7. Copie o **conteudo inteiro** do arquivo `.json` (abra num bloco de notas, selecione tudo) e cole como o secret `GOOGLE_SERVICE_ACCOUNT_JSON` no GitHub (Settings -> Secrets and variables -> Actions -> New repository secret).
 
 ### 3. IDs das planilhas
@@ -32,8 +34,9 @@ Roda sozinho todo dia as 5h (Brasilia) via GitHub Actions.
 Ja configurados com valor padrao em `auditoria/config.py` (podem ser sobrescritos com as
 variaveis de ambiente `SHEET_ID_ORIGEM` / `SHEET_ID_DESTINO` se precisar trocar):
 
-- Origem ("Marcas e Planos"): `1gfo0ORs4ccD0yn13eCuNxHM9USoGH_vjuzytcS1-QyQ`
-- Destino ("Auditoria Iugu x Marcas e Planos"): `1iuFLk7gatsxheUa3ePXXgotstc4YPBy6TXwwQ2pc9vY`
+- Origem e destino, mesma planilha ("Auditoria Iugu x Marcas e Planos"): `1iuFLk7gatsxheUa3ePXXgotstc4YPBy6TXwwQ2pc9vY`
+  - Origem: abas "Vesti MM-YYYY" / "Starter MM-YYYY" (o usuario atualiza a copia limpa todo fim de mes, ex "Vesti 09-2026")
+  - Destino: abas "Auditoria", "Resumo Executivo", "Resumo por Marca"
 
 ## Rodar manualmente (sem esperar as 5h)
 
@@ -50,7 +53,7 @@ python main.py
 
 ## Como funciona a comparacao
 
-Cada linha da planilha de origem tem uma coluna "Subconta" que diz a qual
+Cada linha das abas de origem tem uma coluna "Subconta" que diz a qual
 subconta da Iugu ela pertence (o texto varia bastante: "Vesti - Atta",
 "Vesti- Atta", "Vesti(assinatura)" etc). O script resolve esse texto para
 a subconta certa (`auditoria/matching.py`) e só compara aquela linha contra

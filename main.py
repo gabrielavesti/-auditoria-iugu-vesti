@@ -1,9 +1,10 @@
-"""Auditoria diaria: compara as faturas da Iugu com a planilha 'Marcas e
-Planos' e escreve divergencias + resumos na planilha de auditoria.
+"""Auditoria diaria: compara as faturas da Iugu com as copias limpas das
+abas "Vesti MM-YYYY" / "Starter MM-YYYY" (mes/ano atual, mantidas pelo
+usuario dentro da propria planilha de auditoria) e escreve divergencias +
+resumos nas abas de destino da mesma planilha.
 
-Le as abas "Vesti MM-YYYY" e "Starter MM-YYYY" (mes/ano atual) da planilha de
-origem, e concilia cada linha contra a subconta da Iugu indicada na propria
-coluna "Subconta" (nao existe correspondencia fixa aba-subconta - ver
+Concilia cada linha contra a subconta da Iugu indicada na propria coluna
+"Subconta" (nao existe correspondencia fixa aba-subconta - ver
 auditoria/matching.py).
 """
 
