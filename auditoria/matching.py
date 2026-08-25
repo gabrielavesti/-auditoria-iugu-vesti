@@ -64,6 +64,14 @@ def linhas_da_aba(values):
 
         marca = get("marca")
         cpf = apenas_digitos(get("cpfcnpj"))
+        if len(cpf) not in (11, 14):
+            # CPF tem 11 digitos, CNPJ tem 14 - qualquer outro tamanho e lixo
+            # (ex: dia de vencimento vazado pra essa coluna, "12", "05" etc),
+            # nao um documento de verdade. Tratar como sem CPF evita agrupar
+            # marcas diferentes sob o mesmo numero curto por coincidencia -
+            # achado real na aba Vesti 08-2026, onde a maioria das linhas
+            # tinha um numero de 1-2 digitos nessa coluna em vez do CPF/CNPJ.
+            cpf = ""
         if not marca and not cpf:
             continue
         if marca and normalizar_header(marca) == "marca":
