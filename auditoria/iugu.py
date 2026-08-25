@@ -19,14 +19,22 @@ PAUSA_ENTRE_CONTAS = 1.5  # segundos - evita 429 da Iugu ao varrer varias subcon
 
 
 def _buscar_pagina(token, params, tentativas=4):
+    ultimo_erro = None
     for tentativa in range(tentativas):
-        resp = requests.get("https://api.iugu.com/v1/invoices", params={**params, "api_token": token}, timeout=30)
+        try:
+            resp = requests.get("https://api.iugu.com/v1/invoices", params={**params, "api_token": token}, timeout=30)
+        except requests.exceptions.RequestException as exc:
+            ultimo_erro = exc
+            if tentativa < tentativas - 1:
+                time.sleep(5)
+                continue
+            raise
         if resp.status_code in (429, 500, 502, 503, 504) and tentativa < tentativas - 1:
             time.sleep(5)
             continue
         resp.raise_for_status()
         return resp.json()
-    resp.raise_for_status()
+    raise ultimo_erro
 
 
 def buscar_faturas_do_mes(agora=None):
