@@ -4,10 +4,17 @@ Segredos (token da Iugu, credencial da conta de servico do Google) vem de
 variaveis de ambiente / GitHub Secrets - nunca ficam hardcoded aqui.
 """
 
+import json
 import os
 
-IUGU_MASTER_TOKEN = os.environ["IUGU_MASTER_TOKEN"]
+# JSON com [{"parceiro", "id_iugu", "token"}, ...] - um token proprio por
+# subconta (cada subconta e uma conta Iugu separada de verdade; um token
+# master unico so enxerga a propria conta dele, nunca as subcontas filhas -
+# ver historico do projeto para o diagnostico completo).
+IUGU_TOKENS_JSON = os.environ["IUGU_TOKENS_JSON"]
 GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
+
+TOKENS_POR_ID = {c["id_iugu"]: c["token"] for c in json.loads(IUGU_TOKENS_JSON)}
 
 # Origem = a propria planilha de auditoria: o usuario mantem copias limpas
 # (revisadas manualmente, sem linhas que na verdade nao existem/sao isentas na
@@ -17,10 +24,10 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.environ["GOOGLE_SERVICE_ACCOUNT_JSON"]
 SHEET_ID_ORIGEM = os.environ.get("SHEET_ID_ORIGEM", "1iuFLk7gatsxheUa3ePXXgotstc4YPBy6TXwwQ2pc9vY")
 SHEET_ID_DESTINO = os.environ.get("SHEET_ID_DESTINO", "1iuFLk7gatsxheUa3ePXXgotstc4YPBy6TXwwQ2pc9vY")
 
-# Subcontas ativas da Iugu (17 linhas no CSV original menos "Vesti Light" - duplicata
-# inativa de "Vesti Starter" - e as duas linhas "Vesti Sete", nenhuma ativa).
+# Subcontas ativas da Iugu (2026-08-25: cada uma e uma conta Iugu separada de
+# verdade, com seu proprio token em IUGU_TOKENS_JSON - "Portal Textil Atta"
+# foi removida a pedido do usuario, nao e mais usada no projeto).
 CONTAS_IUGU = [
-    {"parceiro": "Portal Textil Atta", "id_iugu": "75272D2A2643430FB7F8323A00338043", "chaves": ["textil"]},
     {"parceiro": "Vesti Multimarcas", "id_iugu": "72C32E7967E14D8CA4391F607686A096", "chaves": ["multimarcas"]},
     {"parceiro": "Vesti ProRoi", "id_iugu": "C35840FD3CBA4665B1724C8C0A16B127", "chaves": ["proroi"]},
     {"parceiro": "Vesti Tizzefy", "id_iugu": "9A0ABCF77B134ABE93E367E676BC54F4", "chaves": ["tizzefy"]},
@@ -34,11 +41,13 @@ CONTAS_IUGU = [
     {"parceiro": "Vesti- Up Agency", "id_iugu": "EDB655C564C24E6BA9190607F0B1B229", "chaves": ["agency"]},
     {"parceiro": "Vesti Starter", "id_iugu": "A75417523A5040D399EB1D56E129DEE8", "chaves": ["starter"]},
     {"parceiro": "Vesti Portal", "id_iugu": "EFCEC6A16EF14FDB8C0A8C569E378C4F", "chaves": ["portal"]},
+    {"parceiro": "Vesti Sete", "id_iugu": "2EE7187C12AA4FFDB6531DE6D35BA41D", "chaves": ["sete"]},
+    {"parceiro": "Mensalidade Vesti", "id_iugu": "BD16B8EBD6A7479799D1B3464B56676A", "chaves": ["mensalidade"]},
+    {"parceiro": "Vesti - SNAPFY.AI", "id_iugu": "8CB2BBA7CE00472B9A8D75B1DD9D71C2", "chaves": ["snapfy"]},
+    {"parceiro": "Vesti - Vesti Go", "id_iugu": "50E8AB8BE7B7482F9AAB67DFA0D87F96", "chaves": ["vesti go", "vestigo"]},
     # generica, tem que ficar por ultimo (e substring de quase todo valor de Subconta)
     {"parceiro": "Vesti", "id_iugu": "4D9307142A324DC28B5A920B934E6BC5", "chaves": ["vesti"]},
 ]
-
-CONTA_POR_ID = {c["id_iugu"]: c for c in CONTAS_IUGU}
 
 # abas da planilha de origem que sao lidas e comparadas (uma por mes, nomeadas
 # "<PREFIXO> MM-YYYY" - ex "Vesti 08-2026", "Starter 08-2026")
