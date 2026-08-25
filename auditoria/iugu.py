@@ -7,6 +7,7 @@ master so enxerga as proprias faturas dele, nunca as das contas filhas. Por
 isso a busca e feita conta por conta, com o token dela, em vez de uma unica
 chamada agregada."""
 
+import calendar
 import time
 from datetime import datetime, timezone
 
@@ -41,8 +42,9 @@ def buscar_faturas_do_mes(agora=None):
     """Retorna lista de dicts (uma fatura por item) de todas as subcontas
     ativas, cada uma buscada com seu proprio token."""
     agora = agora or datetime.now(timezone.utc)
+    ultimo_dia_mes = calendar.monthrange(agora.year, agora.month)[1]
     data_inicial = agora.replace(day=1).strftime("%Y-%m-%d")
-    data_final = agora.strftime("%Y-%m-%d")
+    data_final = agora.replace(day=ultimo_dia_mes).strftime("%Y-%m-%d")
 
     resultado = []
     for conta in config.CONTAS_IUGU:
@@ -56,11 +58,18 @@ def buscar_faturas_do_mes(agora=None):
             data = _buscar_pagina(
                 token,
                 {
-                    "created_at_from": data_inicial,
-                    "created_at_to": data_final,
+                    # filtra por vencimento, nao por criacao: a Iugu costuma
+                    # criar a fatura de um cliente alguns dias ANTES do
+                    # vencimento (as vezes ainda no mes anterior) - filtrar
+                    # por created_at perdia faturas ja pagas cujo vencimento
+                    # cai neste mes mas foram criadas no ultimo dia do mes
+                    # passado (achado real: Blitz Closet, criada 31/07,
+                    # vencimento 15/08).
+                    "due_date_from": data_inicial,
+                    "due_date_to": data_final,
                     "limit": LIMITE_PAGINA,
                     "start": start,
-                    "sortBy": "created_at",
+                    "sortBy": "due_date",
                     "sortType": "desc",
                 },
             )
