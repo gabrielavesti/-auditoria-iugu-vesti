@@ -63,14 +63,21 @@ def linhas_da_aba(values):
             return row[i] or default
 
         marca = get("marca")
-        cpf = apenas_digitos(get("cpfcnpj"))
-        if len(cpf) not in (11, 14):
-            # CPF tem 11 digitos, CNPJ tem 14 - qualquer outro tamanho e lixo
-            # (ex: dia de vencimento vazado pra essa coluna, "12", "05" etc),
-            # nao um documento de verdade. Tratar como sem CPF evita agrupar
-            # marcas diferentes sob o mesmo numero curto por coincidencia -
-            # achado real na aba Vesti 08-2026, onde a maioria das linhas
-            # tinha um numero de 1-2 digitos nessa coluna em vez do CPF/CNPJ.
+
+        # Na aba "Vesti 08-2026", a maioria das linhas tem as colunas "CPF e
+        # CNPJ" e "Vencimento" fisicamente trocadas na planilha (confirmado
+        # celula a celula, sem merge envolvido - ex: Riquezzi Jeans, coluna U
+        # com "26" e coluna W com o CNPJ de verdade). Em vez de depender de
+        # qual coluna esta "certa", detecta pelo formato: CPF/CNPJ tem 11 ou
+        # 14 digitos, dia de vencimento tem 1-2 digitos entre 1 e 31 - pega
+        # cada valor de qualquer uma das duas colunas, o que bater o formato.
+        cpf_col_cpf = apenas_digitos(get("cpfcnpj"))
+        cpf_col_venc = apenas_digitos(get("dia_vencimento"))
+        if len(cpf_col_cpf) in (11, 14):
+            cpf = cpf_col_cpf
+        elif len(cpf_col_venc) in (11, 14):
+            cpf = cpf_col_venc
+        else:
             cpf = ""
         if not marca and not cpf:
             continue
@@ -85,10 +92,14 @@ def linhas_da_aba(values):
         subconta_raw = get("subconta")
         conta_resolvida = resolver_conta(subconta_raw)
 
-        dia_venc_digits = apenas_digitos(get("dia_vencimento"))
-        dia_vencimento = int(dia_venc_digits) if dia_venc_digits else None
-        if dia_vencimento is not None and not (1 <= dia_vencimento <= 31):
-            dia_vencimento = None
+        def _como_dia(digitos):
+            if digitos and 1 <= len(digitos) <= 2:
+                n = int(digitos)
+                if 1 <= n <= 31:
+                    return n
+            return None
+
+        dia_vencimento = _como_dia(cpf_col_venc) or _como_dia(cpf_col_cpf)
 
         linhas.append(
             {
@@ -248,7 +259,9 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
     }
 
 
-def _conciliar_faturas_com_planilha(faturas_conta, linhas_candidatas, dia_atual, parceiro, fallback_por_nome=True):
+def _conciliar_faturas_com_planilha(
+    faturas_conta, linhas_candidatas, dia_atual, parceiro, fallback_por_nome=True, exigir_linha_unica=False
+):
     """Concilia um conjunto de faturas da Iugu contra um conjunto de linhas
     candidatas da planilha (por CPF/CNPJ exato, com fallback por nome de
     marca nos dois sentidos quando fallback_por_nome=True). Retorna
@@ -260,7 +273,15 @@ def _conciliar_faturas_com_planilha(faturas_conta, linhas_candidatas, dia_atual,
     usado no passo global (contas tipo "Vesti Setup", que podem faturar
     marca de QUALQUER subconta): contra a planilha inteira, um nome curto
     pode coincidir por acaso com outra marca sem relacao (achado real:
-    "Uezz" e substring de "riQUEZZi"), entao so aceita CPF/CNPJ exato."""
+    "Uezz" e substring de "riQUEZZi"), entao so aceita CPF/CNPJ exato.
+
+    exigir_linha_unica=True (tambem so pro passo global) so fecha por
+    CPF/CNPJ exato quando a planilha tem UMA SO linha com aquele CPF/CNPJ -
+    uma empresa pode ter mais de uma linha com o mesmo CNPJ (plano normal +
+    Oraculo, por ex.), e juntar as duas pra uma fatura avulsa so por
+    coincidencia de CNPJ rouba a linha certa do match normal dela na propria
+    subconta (achado real: Riquezzi Jeans - juntar as 2 linhas escondeu a
+    mensalidade PRO, que devia ter fechado sozinha contra a fatura dela)."""
     linhas_auditoria = []
 
     iugu_by_cnpj = {}
@@ -279,6 +300,8 @@ def _conciliar_faturas_com_planilha(faturas_conta, linhas_candidatas, dia_atual,
     # Planilha"/"Ausente na Iugu" falsos sempre que so um dos dois
     # cadastros tem o CPF/CNPJ preenchido (caso real: Levitheo).
     cnpjs_em_comum = set(iugu_by_cnpj) & set(sheet_by_cnpj)
+    if exigir_linha_unica:
+        cnpjs_em_comum = {cpf for cpf in cnpjs_em_comum if len(sheet_by_cnpj[cpf]) == 1}
     for cpf in cnpjs_em_comum:
         linhas_auditoria.append(
             _montar_linha_auditoria(parceiro, cpf, iugu_by_cnpj[cpf], sheet_by_cnpj[cpf], dia_atual=dia_atual)
@@ -353,7 +376,8 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
     if faturas_globais:
         parceiro_global = faturas_globais[0]["_parceiro"]
         linhas_globais, linhas_resolvidas = _conciliar_faturas_com_planilha(
-            faturas_globais, linhas_resolvidas, dia_atual, parceiro_global, fallback_por_nome=False
+            faturas_globais, linhas_resolvidas, dia_atual, parceiro_global,
+            fallback_por_nome=False, exigir_linha_unica=True,
         )
         linhas_auditoria.extend(linhas_globais)
 
