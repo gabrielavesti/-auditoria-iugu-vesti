@@ -49,6 +49,15 @@ CONTAS_IUGU = [
     {"parceiro": "Vesti", "id_iugu": "4D9307142A324DC28B5A920B934E6BC5", "chaves": ["vesti"]},
 ]
 
+# Contas que vendem um servico avulso (plus) pra marcas de QUALQUER
+# subconta - ex: "Vesti Setup" fatura o Oraculo, que pode ser vendido pra
+# uma marca da Atta, da Comfio, da Vesti generica, etc. Faturas dessas
+# contas nao ficam presas a comparar so contra a mesma subconta (ao
+# contrario do resto) - casam contra a planilha inteira por CPF/CNPJ ou
+# nome (achado real: Riquezzi Jeans, setup faturado em "Vesti Setup" mas a
+# marca em si e da subconta "Vesti").
+CONTAS_GLOBAIS = {"381FEEEA09BE4A17942BDA5888C94470"}  # Vesti Setup
+
 # abas da planilha de origem que sao lidas e comparadas (uma por mes, nomeadas
 # "<PREFIXO> MM-YYYY" - ex "Vesti 08-2026", "Starter 08-2026")
 ABAS_ORIGEM = ["Vesti", "Starter"]

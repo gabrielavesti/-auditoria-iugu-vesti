@@ -248,6 +248,89 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
     }
 
 
+def _conciliar_faturas_com_planilha(faturas_conta, linhas_candidatas, dia_atual, parceiro, fallback_por_nome=True):
+    """Concilia um conjunto de faturas da Iugu contra um conjunto de linhas
+    candidatas da planilha (por CPF/CNPJ exato, com fallback por nome de
+    marca nos dois sentidos quando fallback_por_nome=True). Retorna
+    (linhas_auditoria_geradas, linhas_candidatas_nao_usadas) - o chamador
+    decide o que fazer com quem sobrou (virar "Ausente na Iugu" direto, ou
+    voltar pro pool de outra conta, como no caso das contas globais).
+
+    fallback_por_nome=False desliga o casamento por substring de nome -
+    usado no passo global (contas tipo "Vesti Setup", que podem faturar
+    marca de QUALQUER subconta): contra a planilha inteira, um nome curto
+    pode coincidir por acaso com outra marca sem relacao (achado real:
+    "Uezz" e substring de "riQUEZZi"), entao so aceita CPF/CNPJ exato."""
+    linhas_auditoria = []
+
+    iugu_by_cnpj = {}
+    for inv in faturas_conta:
+        if inv.get("cpf_cnpj"):
+            iugu_by_cnpj.setdefault(inv["cpf_cnpj"], []).append(inv)
+
+    sheet_by_cnpj = {}
+    for row in linhas_candidatas:
+        if row.get("cpfcnpj"):
+            sheet_by_cnpj.setdefault(row["cpfcnpj"], []).append(row)
+
+    # so fecha direto quem tem o MESMO CPF/CNPJ preenchido nos dois lados.
+    # CPF preenchido so de um lado (ou faltando nos dois) vai pro fallback
+    # por nome abaixo - fechar isso aqui direto criaria "Ausente na
+    # Planilha"/"Ausente na Iugu" falsos sempre que so um dos dois
+    # cadastros tem o CPF/CNPJ preenchido (caso real: Levitheo).
+    cnpjs_em_comum = set(iugu_by_cnpj) & set(sheet_by_cnpj)
+    for cpf in cnpjs_em_comum:
+        linhas_auditoria.append(
+            _montar_linha_auditoria(parceiro, cpf, iugu_by_cnpj[cpf], sheet_by_cnpj[cpf], dia_atual=dia_atual)
+        )
+
+    # grupos sem par exato de CPF/CNPJ: cada grupo mantem juntas todas as
+    # faturas/linhas do mesmo CPF (preserva "Multiplos Registros" quando o
+    # mesmo CPF tem varias faturas/linhas); quem nao tem CPF vira grupo de 1
+    # item so, igual sempre foi.
+    grupos_iugu_sem_par = [invs for cpf, invs in iugu_by_cnpj.items() if cpf not in cnpjs_em_comum]
+    grupos_iugu_sem_par += [[inv] for inv in faturas_conta if not inv.get("cpf_cnpj")]
+
+    grupos_planilha_sem_par = [rows for cpf, rows in sheet_by_cnpj.items() if cpf not in cnpjs_em_comum]
+    grupos_planilha_sem_par += [[row] for row in linhas_candidatas if not row.get("cpfcnpj")]
+
+    # fallback: casa por nome de marca quem nao fechou por CPF/CNPJ exato
+    # (seja por falta do dado ou por CPF sem par do outro lado). Checa nos
+    # dois sentidos porque o customer_name da Iugu costuma vir como "Marca =
+    # Razao Social Completa" - mais longo que a Marca da planilha, entao so
+    # caberia dentro dela no sentido planilha-em-iugu.
+    usados_planilha = set()
+    for grupo_iugu in grupos_iugu_sem_par:
+        nome_iugu = normalizar_texto(grupo_iugu[0].get("customer_name") or grupo_iugu[0].get("payer_name") or "")
+        match_idx = None
+        for i, grupo_planilha in enumerate(grupos_planilha_sem_par):
+            if not fallback_por_nome:
+                break
+            if i in usados_planilha:
+                continue
+            nome_planilha = normalizar_texto(grupo_planilha[0].get("marca") or "")
+            if nome_iugu and nome_planilha and (nome_iugu in nome_planilha or nome_planilha in nome_iugu):
+                match_idx = i
+                break
+        cpf_grupo = grupo_iugu[0].get("cpf_cnpj") or ""
+        if match_idx is not None:
+            usados_planilha.add(match_idx)
+            linhas_auditoria.append(
+                _montar_linha_auditoria(
+                    parceiro, cpf_grupo, grupo_iugu, grupos_planilha_sem_par[match_idx], dia_atual=dia_atual
+                )
+            )
+        else:
+            linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf_grupo, grupo_iugu, [], dia_atual=dia_atual))
+
+    linhas_nao_usadas = []
+    for i, grupo_planilha in enumerate(grupos_planilha_sem_par):
+        if i not in usados_planilha:
+            linhas_nao_usadas.extend(grupo_planilha)
+
+    return linhas_auditoria, linhas_nao_usadas
+
+
 def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
     linhas_auditoria = []
 
@@ -262,6 +345,18 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
         else:
             linhas_resolvidas.append(row)
 
+    # contas globais (ex: Vesti Setup/Oraculo) vendem servico avulso pra
+    # marca de qualquer subconta - casam contra a planilha inteira antes do
+    # particionamento normal por subconta, e quem casar sai do pool comum.
+    faturas_globais = [f for f in faturas_iugu if f["_id_iugu"] in config.CONTAS_GLOBAIS]
+    faturas_iugu = [f for f in faturas_iugu if f["_id_iugu"] not in config.CONTAS_GLOBAIS]
+    if faturas_globais:
+        parceiro_global = faturas_globais[0]["_parceiro"]
+        linhas_globais, linhas_resolvidas = _conciliar_faturas_com_planilha(
+            faturas_globais, linhas_resolvidas, dia_atual, parceiro_global, fallback_por_nome=False
+        )
+        linhas_auditoria.extend(linhas_globais)
+
     ids_iugu = {f["_id_iugu"] for f in faturas_iugu} | {r["id_iugu"] for r in linhas_resolvidas}
 
     for id_iugu in ids_iugu:
@@ -271,69 +366,23 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
             linhas_conta[0]["parceiro_resolvido"] if linhas_conta else None
         )
 
-        iugu_by_cnpj = {}
-        for inv in faturas_conta:
-            if inv.get("cpf_cnpj"):
-                iugu_by_cnpj.setdefault(inv["cpf_cnpj"], []).append(inv)
+        linhas_conta_auditoria, sobras = _conciliar_faturas_com_planilha(
+            faturas_conta, linhas_conta, dia_atual, parceiro
+        )
+        linhas_auditoria.extend(linhas_conta_auditoria)
 
-        sheet_by_cnpj = {}
-        for row in linhas_conta:
+        # reagrupa por CPF/CNPJ quem sobrou sem par (preserva "Multiplos
+        # Registros" quando varias linhas do mesmo CPF ficam sem fatura).
+        sobras_por_cpf = {}
+        sobras_sem_cpf = []
+        for row in sobras:
             if row.get("cpfcnpj"):
-                sheet_by_cnpj.setdefault(row["cpfcnpj"], []).append(row)
-
-        # so fecha direto quem tem o MESMO CPF/CNPJ preenchido nos dois lados.
-        # CPF preenchido so de um lado (ou faltando nos dois) vai pro fallback
-        # por nome abaixo - fechar isso aqui direto criaria "Ausente na
-        # Planilha"/"Ausente na Iugu" falsos sempre que so um dos dois
-        # cadastros tem o CPF/CNPJ preenchido (caso real: Levitheo).
-        cnpjs_em_comum = set(iugu_by_cnpj) & set(sheet_by_cnpj)
-        for cpf in cnpjs_em_comum:
-            linhas_auditoria.append(
-                _montar_linha_auditoria(parceiro, cpf, iugu_by_cnpj[cpf], sheet_by_cnpj[cpf], dia_atual=dia_atual)
-            )
-
-        # grupos sem par exato de CPF/CNPJ: cada grupo mantem juntas todas as
-        # faturas/linhas do mesmo CPF (preserva "Multiplos Registros" quando
-        # o mesmo CPF tem varias faturas/linhas); quem nao tem CPF vira grupo
-        # de 1 item so, igual sempre foi.
-        grupos_iugu_sem_par = [invs for cpf, invs in iugu_by_cnpj.items() if cpf not in cnpjs_em_comum]
-        grupos_iugu_sem_par += [[inv] for inv in faturas_conta if not inv.get("cpf_cnpj")]
-
-        grupos_planilha_sem_par = [rows for cpf, rows in sheet_by_cnpj.items() if cpf not in cnpjs_em_comum]
-        grupos_planilha_sem_par += [[row] for row in linhas_conta if not row.get("cpfcnpj")]
-
-        # fallback: casa por nome de marca quem nao fechou por CPF/CNPJ exato
-        # (seja por falta do dado ou por CPF sem par do outro lado). Checa
-        # nos dois sentidos porque o customer_name da Iugu costuma vir como
-        # "Marca = Razao Social Completa" - mais longo que a Marca da
-        # planilha, entao so caberia dentro dela no sentido planilha-em-iugu.
-        usados_planilha = set()
-        for grupo_iugu in grupos_iugu_sem_par:
-            nome_iugu = normalizar_texto(grupo_iugu[0].get("customer_name") or grupo_iugu[0].get("payer_name") or "")
-            match_idx = None
-            for i, grupo_planilha in enumerate(grupos_planilha_sem_par):
-                if i in usados_planilha:
-                    continue
-                nome_planilha = normalizar_texto(grupo_planilha[0].get("marca") or "")
-                if nome_iugu and nome_planilha and (nome_iugu in nome_planilha or nome_planilha in nome_iugu):
-                    match_idx = i
-                    break
-            cpf_grupo = grupo_iugu[0].get("cpf_cnpj") or ""
-            if match_idx is not None:
-                usados_planilha.add(match_idx)
-                linhas_auditoria.append(
-                    _montar_linha_auditoria(
-                        parceiro, cpf_grupo, grupo_iugu, grupos_planilha_sem_par[match_idx], dia_atual=dia_atual
-                    )
-                )
+                sobras_por_cpf.setdefault(row["cpfcnpj"], []).append(row)
             else:
-                linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf_grupo, grupo_iugu, [], dia_atual=dia_atual))
-
-        for i, grupo_planilha in enumerate(grupos_planilha_sem_par):
-            if i not in usados_planilha:
-                cpf_grupo = grupo_planilha[0].get("cpfcnpj") or ""
-                linhas_auditoria.append(
-                    _montar_linha_auditoria(parceiro, cpf_grupo, [], grupo_planilha, dia_atual=dia_atual)
-                )
+                sobras_sem_cpf.append(row)
+        for cpf, rows in sobras_por_cpf.items():
+            linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf, [], rows, dia_atual=dia_atual))
+        for row in sobras_sem_cpf:
+            linhas_auditoria.append(_montar_linha_auditoria(parceiro, "", [], [row], dia_atual=dia_atual))
 
     return linhas_auditoria
