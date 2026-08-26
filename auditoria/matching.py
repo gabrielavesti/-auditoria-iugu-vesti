@@ -369,20 +369,19 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
             linhas_resolvidas.append(row)
 
     # contas globais (ex: Vesti Setup/Oraculo) vendem servico avulso pra
-    # marca de qualquer subconta - casam contra a planilha inteira antes do
-    # particionamento normal por subconta, e quem casar sai do pool comum.
+    # marca de qualquer subconta - a fatura delas so disputa uma linha da
+    # planilha DEPOIS que a subconta natural da marca ja teve a chance de
+    # casar normal. Rodar o passo global antes roubava a linha certa da
+    # planilha de faturas legitimas (achado real: New Sun - a fatura de
+    # ativacao/mensalidade R$1100, que bate com a planilha, ficava "Ausente
+    # na Planilha" porque uma fatura de setup avulso de OUTRA conta, mesmo
+    # CNPJ, chegava primeiro e consumia a unica linha disponivel).
     faturas_globais = [f for f in faturas_iugu if f["_id_iugu"] in config.CONTAS_GLOBAIS]
     faturas_iugu = [f for f in faturas_iugu if f["_id_iugu"] not in config.CONTAS_GLOBAIS]
-    if faturas_globais:
-        parceiro_global = faturas_globais[0]["_parceiro"]
-        linhas_globais, linhas_resolvidas = _conciliar_faturas_com_planilha(
-            faturas_globais, linhas_resolvidas, dia_atual, parceiro_global,
-            fallback_por_nome=False, exigir_linha_unica=True,
-        )
-        linhas_auditoria.extend(linhas_globais)
 
     ids_iugu = {f["_id_iugu"] for f in faturas_iugu} | {r["id_iugu"] for r in linhas_resolvidas}
 
+    sobras_gerais = []
     for id_iugu in ids_iugu:
         faturas_conta = [f for f in faturas_iugu if f["_id_iugu"] == id_iugu]
         linhas_conta = [r for r in linhas_resolvidas if r["id_iugu"] == id_iugu]
@@ -394,19 +393,33 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
             faturas_conta, linhas_conta, dia_atual, parceiro
         )
         linhas_auditoria.extend(linhas_conta_auditoria)
-
-        # reagrupa por CPF/CNPJ quem sobrou sem par (preserva "Multiplos
-        # Registros" quando varias linhas do mesmo CPF ficam sem fatura).
-        sobras_por_cpf = {}
-        sobras_sem_cpf = []
         for row in sobras:
-            if row.get("cpfcnpj"):
-                sobras_por_cpf.setdefault(row["cpfcnpj"], []).append(row)
-            else:
-                sobras_sem_cpf.append(row)
-        for cpf, rows in sobras_por_cpf.items():
-            linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf, [], rows, dia_atual=dia_atual))
-        for row in sobras_sem_cpf:
-            linhas_auditoria.append(_montar_linha_auditoria(parceiro, "", [], [row], dia_atual=dia_atual))
+            sobras_gerais.append((row, parceiro))
+
+    # so agora, com quem sobrou de TODAS as subcontas sem conseguir casar
+    # normal, tenta o passo global (so CPF/CNPJ exato, sem fallback por
+    # nome - risco de colisao com nome curto de marca sem relacao, achado
+    # real: "Uezz"/"riQUEZZi" - e so quando ha uma unica linha por CNPJ).
+    if faturas_globais:
+        parceiro_global = faturas_globais[0]["_parceiro"]
+        sobras_rows = [row for row, _ in sobras_gerais]
+        linhas_globais, sobras_rows = _conciliar_faturas_com_planilha(
+            faturas_globais, sobras_rows, dia_atual, parceiro_global,
+            fallback_por_nome=False, exigir_linha_unica=True,
+        )
+        linhas_auditoria.extend(linhas_globais)
+        sobras_ainda_sem_par = {id(row) for row in sobras_rows}
+        sobras_gerais = [(row, parceiro) for row, parceiro in sobras_gerais if id(row) in sobras_ainda_sem_par]
+
+    # reagrupa por CPF/CNPJ (dentro da mesma subconta original) quem
+    # continua sem par - preserva "Multiplos Registros" quando varias
+    # linhas do mesmo CPF ficam sem fatura.
+    sobras_por_chave = {}
+    for row, parceiro in sobras_gerais:
+        chave = (parceiro, row.get("cpfcnpj") or None, id(row) if not row.get("cpfcnpj") else None)
+        sobras_por_chave.setdefault(chave, []).append(row)
+    for (parceiro, _cpf, _uniq), rows in sobras_por_chave.items():
+        cpf = rows[0].get("cpfcnpj") or ""
+        linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf, [], rows, dia_atual=dia_atual))
 
     return linhas_auditoria
