@@ -37,7 +37,6 @@ CONTAS_IUGU = [
     {"parceiro": "Vesti - Comfio", "id_iugu": "BDD2CB7FA56C47CCAB16CB8C565D4CCB", "chaves": ["comfio"]},
     {"parceiro": "Vesti - Glads", "id_iugu": "0D7B7B8F0CC84AEBB3681137BF8013AE", "chaves": ["glads"]},
     {"parceiro": "Vesti - Renan de Abreu", "id_iugu": "4967C0F69EAD4E1B96AE363AF0C152E9", "chaves": ["renan"]},
-    {"parceiro": "Vesti Setup", "id_iugu": "381FEEEA09BE4A17942BDA5888C94470", "chaves": ["setup"]},
     {"parceiro": "Vesti- Up Agency", "id_iugu": "EDB655C564C24E6BA9190607F0B1B229", "chaves": ["agency"]},
     {"parceiro": "Vesti Starter", "id_iugu": "A75417523A5040D399EB1D56E129DEE8", "chaves": ["starter"]},
     {"parceiro": "Vesti Portal", "id_iugu": "EFCEC6A16EF14FDB8C0A8C569E378C4F", "chaves": ["portal"]},
@@ -50,13 +49,11 @@ CONTAS_IUGU = [
 ]
 
 # Contas que vendem um servico avulso (plus) pra marcas de QUALQUER
-# subconta - ex: "Vesti Setup" fatura o Oraculo, que pode ser vendido pra
-# uma marca da Atta, da Comfio, da Vesti generica, etc. Faturas dessas
-# contas nao ficam presas a comparar so contra a mesma subconta (ao
-# contrario do resto) - casam contra a planilha inteira por CPF/CNPJ ou
-# nome (achado real: Riquezzi Jeans, setup faturado em "Vesti Setup" mas a
-# marca em si e da subconta "Vesti").
-CONTAS_GLOBAIS = {"381FEEEA09BE4A17942BDA5888C94470"}  # Vesti Setup
+# subconta e por isso casam contra a planilha inteira por CPF/CNPJ ou nome
+# em vez de ficarem presas a comparar so contra a mesma subconta. Nenhuma
+# ativa no momento ("Vesti Setup", que preenchia isso, foi removida de
+# CONTAS_IUGU a pedido do usuario em 2026-08-27 - nao sera mais auditada).
+CONTAS_GLOBAIS = set()
 
 # abas da planilha de origem que sao lidas e comparadas (uma por mes, nomeadas
 # "<PREFIXO> MM-YYYY" - ex "Vesti 08-2026", "Starter 08-2026")
