@@ -98,7 +98,11 @@ def buscar_faturas_do_mes(agora=None):
                         "paid_at": inv.get("paid_at"),
                         "canceled_at": inv.get("canceled_at"),
                         "refunded_at": inv.get("refunded_at"),
-                        "plano_descricao": (inv.get("items") or [{}])[0].get("description", "") if inv.get("items") else "",
+                        # junta a descricao de todos os itens, nao so o primeiro - a
+                        # ordem dos itens na fatura da Iugu nao e garantida (ex: fatura
+                        # com "Filial" antes de "Plano Basico" fazia a comparacao de
+                        # plano usar "Filial" e cair em falso positivo de divergencia)
+                        "plano_descricao": "; ".join(i.get("description", "") for i in (inv.get("items") or [])),
                         "account_id": inv.get("account_id"),
                         "account_name": inv.get("account_name") or conta["parceiro"],
                     }
