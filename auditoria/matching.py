@@ -192,12 +192,17 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
         tipos.append("Ausente na Planilha")
     if not subconta_nao_identificada and not iugu_recs and not aguardando_vencimento:
         tipos.append("Ausente na Iugu")
-    if len(iugu_recs) > 1 or len(sheet_recs) > 1:
-        tipos.append("Multiplos Registros")
 
     valor_iugu = sum(i.get("total_cents") or 0 for i in iugu_recs) / 100
     valor_planilha = sum(r.get("valor") or 0 for r in sheet_recs)
     diferenca = round((valor_iugu - valor_planilha), 2)
+
+    # Multiplos registros (varias faturas/linhas pro mesmo CPF/CNPJ) so e um
+    # problema de fato quando a soma dos valores nao bate. Caso comum: add-on
+    # (ex: Oraculo) cobrado numa unica fatura da Iugu mas cadastrado em linha
+    # separada na planilha - soma certinho, e conciliado, nao precisa revisao.
+    if (len(iugu_recs) > 1 or len(sheet_recs) > 1) and not subconta_nao_identificada and not aguardando_vencimento and abs(diferenca) >= 0.01:
+        tipos.append("Multiplos Registros")
     if not subconta_nao_identificada and not aguardando_vencimento and abs(diferenca) >= 0.01:
         tipos.append("Diferenca de Valor")
 
