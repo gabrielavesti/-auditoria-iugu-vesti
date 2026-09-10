@@ -4,9 +4,9 @@ auditoria ja conciliadas, e os valores prontos para escrever nas 3 abas."""
 from datetime import datetime, timezone
 
 COLUNAS_AUDITORIA = [
-    "Marca", "Plano", "Cliente", "E-mail", "CPF/CNPJ", "Dia Vencimento", "Invoice ID", "Subscription ID",
-    "Presente na Iugu", "Status na Iugu", "Status na Planilha", "Valor na Iugu", "Valor na Planilha",
-    "Diferencas", "Tipo da Divergencia", "Descricao do Problema", "Acao Recomendada",
+    "Marca", "Plano", "Cliente", "E-mail", "CPF/CNPJ", "Dia Vencimento", "Vencimento na Iugu", "Invoice ID",
+    "Subscription ID", "Presente na Iugu", "Status na Iugu", "Status na Planilha", "Valor na Iugu",
+    "Valor na Planilha", "Diferencas", "Tipo da Divergencia", "Descricao do Problema", "Acao Recomendada",
 ]
 
 

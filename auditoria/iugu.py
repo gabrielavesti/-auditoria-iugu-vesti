@@ -9,7 +9,7 @@ chamada agregada."""
 
 import calendar
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -43,7 +43,16 @@ def buscar_faturas_do_mes(agora=None):
     ativas, cada uma buscada com seu proprio token."""
     agora = agora or datetime.now(timezone.utc)
     ultimo_dia_mes = calendar.monthrange(agora.year, agora.month)[1]
-    data_inicial = agora.replace(day=1).strftime("%Y-%m-%d")
+    # busca tambem o mes anterior inteiro, nao so o atual: precisamos do
+    # vencimento real do ciclo anterior de cada cliente pra inferir o dia de
+    # cobranca de verdade na Iugu quando a coluna "Vencimento" da planilha
+    # esta desatualizada (achado real: Blue Beni, Mi&co, Alle_Moda - a Iugu
+    # mudou o dia de cobranca ha meses e a planilha nunca foi atualizada,
+    # causando falso "Ausente na Iugu" todo mes). O mes anterior inteiro
+    # sempre cobre a ultima ocorrencia de um ciclo mensal ainda nao vencido
+    # neste mes, seja qual for o dia do mes em que ele cai.
+    primeiro_dia_mes_anterior = (agora.replace(day=1) - timedelta(days=1)).replace(day=1)
+    data_inicial = primeiro_dia_mes_anterior.strftime("%Y-%m-%d")
     data_final = agora.replace(day=ultimo_dia_mes).strftime("%Y-%m-%d")
 
     resultado = []

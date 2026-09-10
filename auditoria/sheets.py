@@ -88,7 +88,7 @@ def limpar_e_escrever(spreadsheet_id, aba, range_a1_sem_aba, values):
 
 def formatar_divergencias(spreadsheet_id, gid_auditoria):
     """Aplica as regras de formatacao condicional (verde/amarelo/vermelho) na
-    aba Auditoria, na coluna "Tipo da Divergencia" (coluna O). Sempre apaga as
+    aba Auditoria, na coluna "Tipo da Divergencia" (coluna P). Sempre apaga as
     regras existentes antes de recriar, para nao acumular regras antigas
     apontando pra coluna errada se as colunas do relatorio mudarem no futuro."""
     svc = _get_service()
@@ -112,7 +112,7 @@ def formatar_divergencias(spreadsheet_id, gid_auditoria):
             "sheetId": gid_auditoria,
             "startRowIndex": 1,
             "startColumnIndex": 0,
-            "endColumnIndex": 17,
+            "endColumnIndex": 18,
             "endRowIndex": 5000,
         }
     ]
@@ -120,14 +120,14 @@ def formatar_divergencias(spreadsheet_id, gid_auditoria):
     regras = [
         # amarelo: pendente ou ainda aguardando o dia de vencimento deste mes
         (
-            '=OR(REGEXMATCH($O2;"Pendente");REGEXMATCH($O2;"Aguardando Vencimento"))',
+            '=OR(REGEXMATCH($P2;"Pendente");REGEXMATCH($P2;"Aguardando Vencimento"))',
             {"red": 1, "green": 0.93, "blue": 0.6},
         ),
         # vermelho: qualquer outra divergencia real (inclui "Ausente na Iugu" -
         # vencimento ja passou e a fatura nao foi gerada)
-        ('=AND($O2<>"Conciliado";$O2<>"")', {"red": 0.96, "green": 0.8, "blue": 0.8}),
+        ('=AND($P2<>"Conciliado";$P2<>"")', {"red": 0.96, "green": 0.8, "blue": 0.8}),
         # verde: conciliado sem divergencias
-        ('=$O2="Conciliado"', {"red": 0.8, "green": 0.94, "blue": 0.8}),
+        ('=$P2="Conciliado"', {"red": 0.8, "green": 0.94, "blue": 0.8}),
     ]
     for i, (formula, cor) in enumerate(regras):
         requests_batch.append(

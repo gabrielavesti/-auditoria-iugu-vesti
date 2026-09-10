@@ -149,8 +149,12 @@ def _acao_recomendada(tipos):
         return "Nenhuma acao necessaria - vencimento ainda nao chegou este mes"
     if "Ausente na Planilha" in tipos:
         return "Lancar fatura na planilha Marcas e Planos"
+    if "Ausente na Iugu" in tipos and "Vencimento Divergente" in tipos:
+        return "Confirmar o dia de vencimento real na Iugu e corrigir a planilha antes de concluir que a fatura nao foi gerada"
     if "Ausente na Iugu" in tipos:
         return "Verificar se a cobranca foi de fato criada na Iugu"
+    if "Vencimento Divergente" in tipos:
+        return "Comparar o dia de vencimento da planilha com o da Iugu e corrigir o desatualizado"
     if "Totalmente Reembolsada" in tipos:
         return "Confirmar motivo do reembolso total e ajustar faturamento"
     if "Parcialmente Reembolsada" in tipos:
@@ -168,12 +172,18 @@ def _acao_recomendada(tipos):
     return "Revisar manualmente"
 
 
-def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_nao_identificada=False, dia_atual=None):
+def _montar_linha_auditoria(
+    parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_nao_identificada=False, dia_atual=None,
+    dia_vencimento_historico=None,
+):
     tipos = []
 
     # se a planilha nao tem fatura na Iugu mas o dia de vencimento deste mes
     # ainda nao chegou, ainda nao e um problema - a Iugu pode gerar a fatura
-    # em qualquer momento ate o vencimento.
+    # em qualquer momento ate o vencimento. Usa sempre o dia cadastrado na
+    # planilha aqui (decisao de "ja passou ou nao" nao muda sozinha com base
+    # na Iugu) - a comparacao com o dia real da Iugu vira um alerta separado
+    # ("Vencimento Divergente") logo abaixo, pra revisao manual.
     dias_venc = [r.get("dia_vencimento") for r in sheet_recs if r.get("dia_vencimento")]
     vencimento_ja_passou = any(d < dia_atual for d in dias_venc) if (dias_venc and dia_atual is not None) else True
     aguardando_vencimento = (
@@ -192,6 +202,15 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
         tipos.append("Ausente na Planilha")
     if not subconta_nao_identificada and not iugu_recs and not aguardando_vencimento:
         tipos.append("Ausente na Iugu")
+
+    # compara o "Dia Vencimento" da planilha com o dia real de cobranca
+    # observado no ciclo anterior da Iugu - so aponta a diferenca pra revisao
+    # manual, nao decide sozinho qual dos dois esta certo (achado real: Blue
+    # Beni, Mi&co, Alle_Moda - a Iugu mudou o dia de cobranca ha meses e a
+    # planilha nunca foi atualizada, o que por si so ja explica falsos
+    # "Ausente na Iugu" quando o dia da planilha ja passou mas o real nao).
+    if not subconta_nao_identificada and dia_vencimento_historico is not None and dias_venc and dia_vencimento_historico not in dias_venc:
+        tipos.append("Vencimento Divergente")
 
     valor_iugu = sum(i.get("total_cents") or 0 for i in iugu_recs) / 100
     valor_planilha = sum(r.get("valor") or 0 for r in sheet_recs)
@@ -246,6 +265,7 @@ def _montar_linha_auditoria(parceiro, cpfcnpj, iugu_recs, sheet_recs, subconta_n
         "E-mail": iugu0.get("email") or sheet0.get("email") or "",
         "CPF/CNPJ": cpfcnpj or "",
         "Dia Vencimento": sheet0.get("dia_vencimento") if sheet0.get("dia_vencimento") is not None else "-",
+        "Vencimento na Iugu": dia_vencimento_historico if dia_vencimento_historico is not None else "-",
         "Invoice ID": "; ".join(str(i.get("invoice_id")) for i in iugu_recs if i.get("invoice_id")),
         "Subscription ID": "; ".join(
             dict.fromkeys(str(i.get("subscription_id")) for i in iugu_recs if i.get("subscription_id"))
@@ -359,8 +379,36 @@ def _conciliar_faturas_com_planilha(
     return linhas_auditoria, linhas_nao_usadas
 
 
-def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
+def _historico_dia_vencimento(faturas_iugu, mes_atual):
+    """Pra cada (subconta, CPF/CNPJ), guarda o dia do mes do vencimento mais
+    recente ANTES do mes atual - usado como o dia de vencimento real quando a
+    coluna "Vencimento" da planilha esta desatualizada (achado real: Blue
+    Beni, Mi&co, Alle_Moda - a Iugu mudou o dia de cobranca ha meses e a
+    planilha nunca foi atualizada, causando falso "Ausente na Iugu" todo
+    mes, mesmo o cliente pagando em dia pelo dia certo)."""
+    if not mes_atual:
+        return {}
+    ultimo_venc = {}
+    for f in faturas_iugu:
+        cpf = f.get("cpf_cnpj")
+        due = f.get("due_date")
+        if not cpf or not due or due[:7] >= mes_atual:
+            continue
+        chave = (f.get("_id_iugu"), cpf)
+        if chave not in ultimo_venc or due > ultimo_venc[chave]:
+            ultimo_venc[chave] = due
+    return {chave: int(due[8:10]) for chave, due in ultimo_venc.items()}
+
+
+def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None, mes_atual=None):
     linhas_auditoria = []
+
+    dia_venc_historico = _historico_dia_vencimento(faturas_iugu, mes_atual)
+    if mes_atual:
+        # a partir daqui, so as faturas do mes atual entram na conciliacao
+        # normal - as do mes anterior ja cumpriram seu papel (inferir o
+        # dia_venc_historico acima) e nao devem ser somadas/casadas de novo.
+        faturas_iugu = [f for f in faturas_iugu if (f.get("due_date") or "")[:7] == mes_atual]
 
     linhas_resolvidas = []
     for row in linhas_planilha:
@@ -425,6 +473,9 @@ def conciliar_por_subconta(faturas_iugu, linhas_planilha, dia_atual=None):
         sobras_por_chave.setdefault(chave, []).append(row)
     for (parceiro, _cpf, _uniq), rows in sobras_por_chave.items():
         cpf = rows[0].get("cpfcnpj") or ""
-        linhas_auditoria.append(_montar_linha_auditoria(parceiro, cpf, [], rows, dia_atual=dia_atual))
+        historico = dia_venc_historico.get((rows[0].get("id_iugu"), cpf))
+        linhas_auditoria.append(
+            _montar_linha_auditoria(parceiro, cpf, [], rows, dia_atual=dia_atual, dia_vencimento_historico=historico)
+        )
 
     return linhas_auditoria

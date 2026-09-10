@@ -44,7 +44,9 @@ def main():
     print(f"Total de linhas da planilha (Vesti + Starter): {len(linhas_planilha)}")
 
     print("Conciliando por subconta...")
-    linhas_auditoria = conciliar_por_subconta(faturas, linhas_planilha, dia_atual=dia_atual_brt)
+    linhas_auditoria = conciliar_por_subconta(
+        faturas, linhas_planilha, dia_atual=dia_atual_brt, mes_atual=agora.strftime("%Y-%m")
+    )
     print(f"  {len(linhas_auditoria)} linhas de auditoria geradas.")
 
     valores_auditoria = montar_valores_auditoria(linhas_auditoria)
@@ -55,7 +57,7 @@ def main():
     gids = sheets.garantir_abas_destino(config.SHEET_ID_DESTINO)
 
     print("Escrevendo aba 'Auditoria'...")
-    sheets.limpar_e_escrever(config.SHEET_ID_DESTINO, "Auditoria", "A1:O5000", valores_auditoria)
+    sheets.limpar_e_escrever(config.SHEET_ID_DESTINO, "Auditoria", "A1:R5000", valores_auditoria)
 
     print("Escrevendo aba 'Resumo Executivo'...")
     sheets.limpar_e_escrever(config.SHEET_ID_DESTINO, "Resumo Executivo", "A1:B50", resumo_executivo)
