@@ -1,0 +1,27 @@
+name: Debug - buscar CNPJ na Iugu (temporario)
+
+on:
+  workflow_dispatch:
+    inputs:
+      cnpj:
+        description: "CNPJ ou CPF a buscar (so digitos)"
+        required: true
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Buscar CNPJ
+        env:
+          IUGU_TOKENS_JSON: ${{ secrets.IUGU_TOKENS_JSON }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+        run: python debug_busca_cnpj.py "${{ inputs.cnpj }}"
