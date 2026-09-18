@@ -24,19 +24,24 @@ for conta in config.CONTAS_IUGU:
         continue
     start = 0
     achou = False
+    erro = None
     while True:
-        resp = requests.get(
-            "https://api.iugu.com/v1/invoices",
-            params={
-                "api_token": token,
-                "due_date_from": data_inicial,
-                "due_date_to": data_final,
-                "limit": 100,
-                "start": start,
-            },
-            timeout=30,
-        )
-        resp.raise_for_status()
+        try:
+            resp = requests.get(
+                "https://api.iugu.com/v1/invoices",
+                params={
+                    "api_token": token,
+                    "due_date_from": data_inicial,
+                    "due_date_to": data_final,
+                    "limit": 100,
+                    "start": start,
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+        except requests.exceptions.RequestException as exc:
+            erro = exc
+            break
         data = resp.json()
         items = data.get("items") or []
         for inv in items:
@@ -50,7 +55,9 @@ for conta in config.CONTAS_IUGU:
         start += 100
         if len(items) < 100 or start >= total_items:
             break
-    if not achou:
+    if erro:
+        print(f"[{conta['parceiro']}] ERRO na busca: {erro}")
+    elif not achou:
         print(f"[{conta['parceiro']}] nada encontrado")
     time.sleep(1)
 
